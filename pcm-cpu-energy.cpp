@@ -68,7 +68,7 @@ void sigHandler(int signo) {
   std::cout << "Energy: " << consumedJoulesTotal << std::endl;
   std::cout << "Power: " << avgPower << std::endl;
   for (int i = 0; i < nCores; i++) {
-    std::cout << "Frequency Core " << i << " : " << avgCoreFrequencies[i]
+    std::cout << "Frequency Core " << i << ": " << avgCoreFrequencies[i]
               << std::endl;
   }
 

@@ -16,8 +16,10 @@
 PCM *m;
 
 // counter states
-SocketCounterState *stateBefore;
-SocketCounterState *stateAfter;
+SocketCounterState *stateSocketBefore;
+SocketCounterState *stateSocketAfter;
+CoreCounterState *stateCoreBefore;
+CoreCounterState *stateCoreAfter;
 
 // times
 uint64 timeBefore, timeAfter;
@@ -25,10 +27,18 @@ uint64 timeBefore, timeAfter;
 // number of CPU sockets
 int nSockets;
 
+// number of (logical) CPU cores
+int nCores;
+
 void sigHandler(int signo) {
-  // get counter state
+  // get socket counter states
   for (int i = 0; i < nSockets; i++) {
-    stateAfter[i] = m->getSocketCounterState(i);
+    stateSocketAfter[i] = m->getSocketCounterState(i);
+  }
+
+  // get core counter states
+  for (int i = 0; i < nCores; i++) {
+    stateCoreAfter[i] = m->getCoreCounterState(i);
   }
 
   // get time
@@ -37,21 +47,36 @@ void sigHandler(int signo) {
   // get consumed energy by all sockets
   double consumedJoulesTotal = 0.0;
   for (int i = 0; i < nSockets; i++) {
-    consumedJoulesTotal += getConsumedJoules(stateBefore[i], stateAfter[i]);
+    consumedJoulesTotal +=
+        getConsumedJoules(stateSocketBefore[i], stateSocketAfter[i]);
   }
 
   // calculate average power
   double avgPower =
       1000.0 * consumedJoulesTotal / double(timeAfter - timeBefore);
 
+  // get per-core average frequency
+  double *avgCoreFrequencies = new double[nCores];
+  for (int i = 0; i < nCores; i++) {
+    avgCoreFrequencies[i] =
+        getAverageFrequency(stateCoreBefore[i], stateCoreAfter[i]);
+  }
+
   std::cout << std::endl;
   std::cout << "Duration: " << double(timeAfter - timeBefore) / 1000.0
             << std::endl;
   std::cout << "Energy: " << consumedJoulesTotal << std::endl;
   std::cout << "Power: " << avgPower << std::endl;
+  for (int i = 0; i < nCores; i++) {
+    std::cout << "Frequency Core " << i << " : " << avgCoreFrequencies[i]
+              << std::endl;
+  }
 
-  delete[] stateBefore;
-  delete[] stateAfter;
+  delete[] stateSocketBefore;
+  delete[] stateSocketAfter;
+  delete[] stateCoreBefore;
+  delete[] stateCoreAfter;
+  delete[] avgCoreFrequencies;
 
   exit(EXIT_SUCCESS);
 }
@@ -60,22 +85,39 @@ int main(int argc, char **argv) {
   // init pcm
   m = PCM::getInstance();
 
-  // get cpu model and make sure its supported
-  if (m->hasPCICFGUncore() == false) {
-    std::cerr << "ERROR: unsupported CPU" << std::endl;
-    exit(EXIT_FAILURE);
+  // make sure everything is good
+  if (!m->good()) {
+    std::cerr << "ERROR: could not access CPU counters" << std::endl;
+    return -1;
+  }
+
+  if (m->program() != PCM::Success) {
+    std::cerr << "ERROR: could not program" << std::endl;
+    return -1;
   }
 
   // get number of CPU sockets
   nSockets = m->getNumSockets();
 
-  // create counter states
-  stateBefore = new SocketCounterState[nSockets];
-  stateAfter = new SocketCounterState[nSockets];
+  // get number of (logical) cores
+  nCores = m->getNumCores();
 
-  // save 'before' counter state
+  // create socket counter states
+  stateSocketBefore = new SocketCounterState[nSockets];
+  stateSocketAfter = new SocketCounterState[nSockets];
+
+  // create core counter states
+  stateCoreBefore = new CoreCounterState[nCores];
+  stateCoreAfter = new CoreCounterState[nCores];
+
+  // save 'before' socket counter states
   for (int i = 0; i < nSockets; i++) {
-    stateBefore[i] = m->getSocketCounterState(i);
+    stateSocketBefore[i] = m->getSocketCounterState(i);
+  }
+
+  // save 'before' core counter states
+  for (int i = 0; i < nCores; i++) {
+    stateCoreBefore[i] = m->getCoreCounterState(i);
   }
 
   // save 'before' time
